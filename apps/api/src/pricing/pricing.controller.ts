@@ -72,7 +72,6 @@ export class PricingController {
       this.prisma.dish.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
       this.prisma.option.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
     ]);
-    const ctx = { tiers, explicit, tierId };
     return {
       dishes: dishes.map((d) => {
         const resolved = resolvePrice('dish', d.id, d.costCents, tierId, tiers, explicit);

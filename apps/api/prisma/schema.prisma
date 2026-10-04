@@ -533,5 +533,3 @@ model CutoffRun {
   draftsCancelled Int
   placedConfirmed Int
 }
-
-This last model is invalid. I need to fix Company.ownerEmployeeId - no FK to Employee to avoid circular dependency. Remove ownedCompany from Employee.
