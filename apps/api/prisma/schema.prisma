@@ -1,0 +1,537 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StaffRole {
+  ADMIN
+  KITCHEN
+  DISPATCH
+  DRIVER
+}
+
+enum Temperature {
+  HOT
+  COLD
+}
+
+enum PackagingType {
+  STANDARD
+  INSULATED
+  COLD_PACK
+}
+
+enum DerivationKind {
+  NONE
+  MULTIPLY_COST
+  ADJUST_TIER
+}
+
+enum OrderStatus {
+  DRAFT
+  PLACED
+  CONFIRMED
+  DELIVERED
+  CANCELLED
+  REJECTED
+}
+
+enum KitchenUnitStatus {
+  PENDING
+  STARTED
+  DONE
+}
+
+enum DispatchStatus {
+  PENDING
+  KITCHEN_READY
+  DISPATCH_READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+}
+
+model Staff {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         StaffRole
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  defaultForCompanies Company[] @relation("CompanyDefaultDriver")
+  assignedDrops       Drop[]
+  orderEvents         OrderEvent[]
+}
+
+model KitchenSettings {
+  id                       String   @id @default("singleton")
+  timezone                 String   @default("America/New_York")
+  cutoffTimeHm             String   @default("16:00")
+  cutoffWorkingDays        Int      @default(2)
+  workingWeekdays          Int[]    @default([0, 1, 2, 3, 4])
+  kitchenReadyBufferMinutes Int     @default(30)
+  updatedAt                DateTime @updatedAt
+}
+
+model KitchenHoliday {
+  id   String   @id @default(cuid())
+  date DateTime @db.Date
+  name String
+
+  @@unique([date])
+}
+
+model Allergen {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  dishes    DishAllergen[]
+  options   OptionAllergen[]
+  employees EmployeeAllergen[]
+}
+
+model DietaryTag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  dishes    DishDietaryTag[]
+  options   OptionDietaryTag[]
+  employees EmployeeDietaryTag[]
+}
+
+model KitchenStation {
+  id     String  @id @default(cuid())
+  name   String  @unique
+  dishes Dish[]
+}
+
+model PortionSize {
+  id      String  @id @default(cuid())
+  name    String  @unique
+  groups  OptionGroupPortion[]
+  options OptionPortionSupport[]
+}
+
+model Dish {
+  id               String      @id @default(cuid())
+  name             String
+  description      String
+  imageUrl         String?
+  sku              String      @unique
+  temperature      Temperature
+  costCents        Int
+  kitchenStationId String?
+  kitchenStation   KitchenStation? @relation(fields: [kitchenStationId], references: [id])
+  minOrderQty      Int?
+  active           Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  allergens    DishAllergen[]
+  dietaryTags  DishDietaryTag[]
+  optionGroups OptionGroup[]
+  prices       DishPrice[]
+  menuItems    MenuItem[]
+  hiddenFor    CompanyHiddenItem[]
+}
+
+model DishAllergen {
+  dishId     String
+  allergenId String
+  dish       Dish     @relation(fields: [dishId], references: [id])
+  allergen   Allergen @relation(fields: [allergenId], references: [id])
+  @@id([dishId, allergenId])
+}
+
+model DishDietaryTag {
+  dishId       String
+  dietaryTagId String
+  dish         Dish       @relation(fields: [dishId], references: [id])
+  dietaryTag   DietaryTag @relation(fields: [dietaryTagId], references: [id])
+  @@id([dishId, dietaryTagId])
+}
+
+model Option {
+  id          String   @id @default(cuid())
+  name        String
+  costCents   Int
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  allergens   OptionAllergen[]
+  dietaryTags OptionDietaryTag[]
+  groups      OptionGroupOption[]
+  prices      OptionPrice[]
+  portions    OptionPortionSupport[]
+}
+
+model OptionAllergen {
+  optionId   String
+  allergenId String
+  option     Option   @relation(fields: [optionId], references: [id])
+  allergen   Allergen @relation(fields: [allergenId], references: [id])
+  @@id([optionId, allergenId])
+}
+
+model OptionDietaryTag {
+  optionId     String
+  dietaryTagId String
+  option       Option     @relation(fields: [optionId], references: [id])
+  dietaryTag   DietaryTag @relation(fields: [dietaryTagId], references: [id])
+  @@id([optionId, dietaryTagId])
+}
+
+model OptionGroup {
+  id           String  @id @default(cuid())
+  dishId       String
+  dish         Dish    @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  name         String
+  required     Boolean @default(true)
+  displayOrder Int
+  usesPortions Boolean @default(false)
+  options      OptionGroupOption[]
+  portions     OptionGroupPortion[]
+}
+
+model OptionGroupOption {
+  groupId      String
+  optionId     String
+  displayOrder Int
+  group        OptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  option       Option      @relation(fields: [optionId], references: [id])
+  @@id([groupId, optionId])
+}
+
+model OptionGroupPortion {
+  groupId          String
+  portionSizeId    String
+  extraChargeCents Int
+  group            OptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  portionSize      PortionSize @relation(fields: [portionSizeId], references: [id])
+  @@id([groupId, portionSizeId])
+}
+
+model OptionPortionSupport {
+  optionId      String
+  portionSizeId String
+  option        Option      @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  portionSize   PortionSize @relation(fields: [portionSizeId], references: [id])
+  @@id([optionId, portionSizeId])
+}
+
+model PriceTier {
+  id             String         @id @default(cuid())
+  name           String         @unique
+  isDefault      Boolean        @default(false)
+  derivationKind DerivationKind @default(NONE)
+  basisPoints    Int?
+  sourceTierId   String?
+  sourceTier     PriceTier?     @relation("TierDerivation", fields: [sourceTierId], references: [id])
+  derivedTiers   PriceTier[]    @relation("TierDerivation")
+  dishPrices     DishPrice[]
+  optionPrices   OptionPrice[]
+  companies      Company[]
+}
+
+model DishPrice {
+  dishId     String
+  tierId     String
+  amountCents Int
+  dish       Dish      @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  tier       PriceTier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  @@id([dishId, tierId])
+}
+
+model OptionPrice {
+  optionId    String
+  tierId      String
+  amountCents Int
+  option      Option    @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  tier        PriceTier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  @@id([optionId, tierId])
+}
+
+model Company {
+  id                       String         @id @default(cuid())
+  name                     String
+  billingContactName       String
+  billingContactEmail      String
+  billingContactPhone      String
+  priceTierId              String?
+  priceTier                PriceTier?     @relation(fields: [priceTierId], references: [id])
+  ownerEmployeeId          String?        @unique
+  defaultDeliveryMinutes   Int            @default(720)
+  leaveKitchenMinutes      Int            @default(60)
+  defaultPackaging         PackagingType  @default(STANDARD)
+  driverStandingInstructions String       @default("")
+  defaultDriverId          String?
+  defaultDriver            Staff?         @relation("CompanyDefaultDriver", fields: [defaultDriverId], references: [id])
+  workingWeekdays          Int[]          @default([0, 1, 2, 3, 4])
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+
+  domains        CompanyDomain[]
+  addresses      CompanyAddress[]
+  holidays       CompanyHoliday[]
+  hiddenCats     CompanyHiddenCategory[]
+  hiddenItems    CompanyHiddenItem[]
+  employees      Employee[]
+  orders         Order[]
+  invoices       Invoice[]
+  drops          Drop[]
+}
+
+model CompanyDomain {
+  id        String  @id @default(cuid())
+  companyId String
+  domain    String  @unique
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model CompanyAddress {
+  id        String  @id @default(cuid())
+  companyId String
+  label     String
+  line1     String
+  line2     String  @default("")
+  city      String
+  state     String
+  zip       String
+  country   String  @default("US")
+  active    Boolean @default(true)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders    Order[]
+  drops     Drop[]
+}
+
+model CompanyHoliday {
+  id        String   @id @default(cuid())
+  companyId String
+  date      DateTime @db.Date
+  name      String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  @@unique([companyId, date])
+}
+
+model CompanyHiddenCategory {
+  companyId  String
+  categoryId String
+  company    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category   MenuCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  @@id([companyId, categoryId])
+}
+
+model CompanyHiddenItem {
+  companyId String
+  dishId    String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  dish      Dish    @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  @@id([companyId, dishId])
+}
+
+model Employee {
+  id                 String  @id @default(cuid())
+  companyId          String
+  company            Company @relation(fields: [companyId], references: [id])
+  email              String
+  name               String
+  canChooseAddress   Boolean @default(false)
+  canChangeTime      Boolean @default(false)
+  canChangePackaging Boolean @default(false)
+  active             Boolean @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  allergens          EmployeeAllergen[]
+  dietaryTags        EmployeeDietaryTag[]
+  orders             Order[]
+
+  @@unique([companyId, email])
+  @@index([companyId])
+}
+
+model EmployeeAllergen {
+  employeeId String
+  allergenId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  allergen   Allergen @relation(fields: [allergenId], references: [id])
+  @@id([employeeId, allergenId])
+}
+
+model EmployeeDietaryTag {
+  employeeId   String
+  dietaryTagId String
+  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  dietaryTag   DietaryTag @relation(fields: [dietaryTagId], references: [id])
+  @@id([employeeId, dietaryTagId])
+}
+
+model MenuCategory {
+  id           String     @id @default(cuid())
+  name         String
+  displayOrder Int
+  active       Boolean    @default(true)
+  secret       Boolean    @default(false)
+  items        MenuItem[]
+  hiddenFor    CompanyHiddenCategory[]
+}
+
+model MenuItem {
+  id           String       @id @default(cuid())
+  categoryId   String
+  dishId       String
+  displayOrder Int
+  active       Boolean      @default(true)
+  category     MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  dish         Dish         @relation(fields: [dishId], references: [id])
+  @@unique([categoryId, dishId])
+}
+
+model Order {
+  id                      String         @id @default(cuid())
+  employeeId              String
+  employee                Employee       @relation(fields: [employeeId], references: [id])
+  companyId               String
+  company                 Company        @relation(fields: [companyId], references: [id])
+  companyNameSnapshot     String
+  employeeNameSnapshot    String
+  deliveryDate            DateTime       @db.Date
+  deliveryTimeMinutes     Int
+  addressId               String
+  address                 CompanyAddress @relation(fields: [addressId], references: [id])
+  addressSnapshot         String
+  packaging               PackagingType
+  status                  OrderStatus    @default(DRAFT)
+  totalCents              Int            @default(0)
+  invoiceId               String?
+  invoice                 Invoice?       @relation(fields: [invoiceId], references: [id])
+  kitchenStartedAt        DateTime?
+  kitchenReadyAt          DateTime?
+  plannedKitchenReadyAt   DateTime?
+  plannedDispatchReadyAt  DateTime?
+  dispatchStatus          DispatchStatus @default(PENDING)
+  dispatchReadyAt         DateTime?
+  outForDeliveryAt        DateTime?
+  deliveredAt             DateTime?
+  dropId                  String?
+  drop                    Drop?          @relation(fields: [dropId], references: [id])
+  onTime                  Boolean?
+  deliveryNote            String?
+  deliveryPhotoUrl        String?
+  version                 Int            @default(1)
+  placedAt                DateTime?
+  confirmedAt             DateTime?
+  cancelledAt             DateTime?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  lines  OrderLine[]
+  events OrderEvent[]
+
+  @@index([deliveryDate, status])
+  @@index([companyId, status])
+  @@index([invoiceId])
+  @@index([dropId])
+}
+
+model OrderLine {
+  id                    String  @id @default(cuid())
+  orderId               String
+  order                 Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  dishId                String
+  dishNameSnapshot      String
+  skuSnapshot           String
+  dishUnitPriceCents    Int
+  quantity              Int
+  lineTotalCents        Int
+  combinations          OrderLineCombination[]
+}
+
+model OrderLineCombination {
+  id                     String            @id @default(cuid())
+  orderLineId            String
+  orderLine              OrderLine         @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
+  quantity               Int
+  unitPriceCents         Int
+  combinationTotalCents  Int
+  kitchenStationId       String?
+  kitchenStationName     String?
+  kitchenStatus          KitchenUnitStatus @default(PENDING)
+  startedAt              DateTime?
+  doneAt                 DateTime?
+  choices                OrderLineChoice[]
+
+  @@index([kitchenStatus])
+}
+
+model OrderLineChoice {
+  id                String               @id @default(cuid())
+  combinationId     String
+  combination       OrderLineCombination @relation(fields: [combinationId], references: [id], onDelete: Cascade)
+  optionGroupId     String
+  optionGroupName   String
+  optionId          String
+  optionName        String
+  portionSizeId     String?
+  portionName       String?
+  optionPriceCents  Int
+  portionExtraCents Int                  @default(0)
+}
+
+model OrderEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type      String
+  at        DateTime @default(now())
+  staffId   String?
+  staff     Staff?   @relation(fields: [staffId], references: [id])
+  payload   String   @default("{}")
+}
+
+model Drop {
+  id                   String         @id @default(cuid())
+  companyId            String
+  company              Company        @relation(fields: [companyId], references: [id])
+  addressId            String
+  address              CompanyAddress @relation(fields: [addressId], references: [id])
+  deliveryDate         DateTime       @db.Date
+  deliveryTimeMinutes  Int
+  driverId             String?
+  driver               Staff?         @relation(fields: [driverId], references: [id])
+  status               DispatchStatus @default(PENDING)
+  createdAt            DateTime       @default(now())
+  orders               Order[]
+
+  @@unique([companyId, addressId, deliveryDate, deliveryTimeMinutes])
+  @@index([driverId, deliveryDate])
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  companyId   String
+  company     Company       @relation(fields: [companyId], references: [id])
+  status      InvoiceStatus @default(OPEN)
+  totalCents  Int
+  createdAt   DateTime      @default(now())
+  paidAt      DateTime?
+  orders      Order[]
+}
+
+model CutoffRun {
+  id              String   @id @default(cuid())
+  deliveryDate    DateTime @db.Date @unique
+  ranAt           DateTime @default(now())
+  draftsCancelled Int
+  placedConfirmed Int
+}
+
+This last model is invalid. I need to fix Company.ownerEmployeeId - no FK to Employee to avoid circular dependency. Remove ownedCompany from Employee.

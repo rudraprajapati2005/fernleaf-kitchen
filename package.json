@@ -1,0 +1,23 @@
+{
+  "name": "fernleaf-kitchen",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e -w web",
+    "build": "npm run build -w @fernleaf/domain && npm run build -w @fernleaf/types && npm run build -w api && npm run build -w web",
+    "db:up": "docker compose up -d",
+    "db:migrate": "npm run prisma:migrate -w api",
+    "db:seed": "npm run prisma:seed -w api",
+    "dev:api": "npm run start:dev -w api",
+    "dev:web": "npm run dev -w web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
